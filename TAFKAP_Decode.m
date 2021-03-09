@@ -1,4 +1,4 @@
-function [est, unc, liks, hypers] = TAFKAP_Decode(samples, p)
+function [est, unc, liks, hypers, p] = TAFKAP_Decode(samples, p)
 
 %     This code runs the PRINCE or TAFKAP decoding algorithm. The original
 %     PRINCE algorithm was first described here: 
@@ -106,8 +106,8 @@ p = setdefaults(defaults, p);
 if isempty(samples)
     % If no data was supplied, let's simulate some data to decode
     fprintf('\n--SIMULATING DATA--\n')
-    Ntraintrials = 200;
-    Ntesttrials = 20;
+    Ntraintrials = 200; % 200
+    Ntesttrials = 20;   % 20
     Ntrials = Ntraintrials+Ntesttrials;
     
     [samples, sp] = makeSNCData(struct('nvox', 500, 'ntrials', Ntrials, 'taumean', 0.7, 'ntrials_per_run', Ntesttrials, ...
@@ -235,7 +235,7 @@ for i = 1:p.Nboot
         end
         [~, min_idx] = min(init_losses);                
         sol = minimize(inits{min_idx}, @fun_negLL_norm, 1e4);
-        prec_mat = invSNC(W(:, 1:pnchan), sol(1:end-2), sol(end-1), sol(end));
+        prec_mat = invSNC(W(:, 1:p.nchan), sol(1:end-2), sol(end-1), sol(end));
     end    
      
     %% Compute likelihoods on test-trials given model parameter sample
@@ -281,6 +281,9 @@ pop_vec = liks*exp(1i*s_precomp);
 est = mod(angle(pop_vec)/pi*90, 180); %Stimulus estimate (likelihood/posterior means)
 unc = sqrt(-2*log(abs(pop_vec)))/pi*90; %Uncertainty (defined here as circular SDs of likelihoods/posteriors)
     
+fprintf \n
+
+
     function [minll, minder] = fun_negLL_norm(params)        
         if nargout > 1
             [minll, minder] = fun_LL_norm(params);        
@@ -308,8 +311,11 @@ unc = sqrt(-2*log(abs(pop_vec)))/pi*90; %Uncertainty (defined here as circular S
         sig = params(end-1);
         rho = params(end);
         
-                        
-        [omi, NormConst] = invSNC(W(:,1:p.nchan), tau, sig, rho, p.singletau);
+
+        % TCS: p.singletau does not seem to be incorporated into this
+        % version of invSNC
+        %[omi, NormConst] = invSNC(W(:,1:p.nchan), tau, sig, rho, p.singletau);
+        [omi, NormConst] = invSNC(W(:,1:p.nchan), tau, sig, rho);
                 
         XXt = noise'*noise;
         
@@ -347,7 +353,9 @@ unc = sqrt(-2*log(abs(pop_vec)))/pi*90; %Uncertainty (defined here as circular S
     function loss = fun_norm_loss(c_est, c0)
         
         try
-            loss = (logdet(c_est, 'chol') + sum(sum(invChol_mex(c_est).*c0)))/size(c0,2);
+            tld = logdet(c_est, 'chol'); %-1.45e03
+            ic = invChol_mex(c_est);     % 9-114
+            loss = (logdet(c_est, 'chol') + sum(sum(invChol_mex(c_est).*c0)))/size(c0,2); %28
         catch ME
             if any(strcmpi(ME.identifier, {'MATLAB:posdef', 'MATLAB:invChol_mex:dpotrf:notposdef'}))
                 loss = (logdet(c_est) + trace(c_est\c0))/size(c0,2);
